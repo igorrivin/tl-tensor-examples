@@ -153,6 +153,7 @@ def main():
     parser.add_argument('--count', type=int, default=1, help='Number of braids to generate')
     parser.add_argument('--repeats', type=int, default=64, help='Optimization repeats')
     parser.add_argument('--stats', action='store_true', help='Show component statistics')
+    parser.add_argument('--latex', action='store_true', help='Output in LaTeX format')
     args = parser.parse_args()
 
     reduced = not args.general
@@ -187,18 +188,24 @@ def main():
 
         nc = num_components(word, args.strands)
 
-        print(f"\n{'='*60}")
-        print(f"Random braid #{i+1}")
-        print(f"Strands: {args.strands}, Length: {args.length}, {'Reduced' if reduced else 'General'}")
-        print(f"Components: {nc} ({'knot' if nc == 1 else 'link'})")
-        print(f"Word: {word}")
-
         jones, info, opt_time, contract_time = compute_jones(word, args.repeats)
 
-        print(f"\nlog10(cost): {info.cost:.1f}")
-        print(f"Optimization: {opt_time:.2f}s, Contraction: {contract_time:.3f}s")
-        print(f"Jones polynomial ({len(jones)} terms):")
-        print(jones)
+        if args.latex:
+            from latex_utils import braid_to_latex, jones_to_latex
+            print(f"\n% Random braid #{i+1}: {args.strands} strands, {args.length} crossings, {nc} component(s)")
+            print(f"% log10(cost)={info.cost:.1f}, opt={opt_time:.2f}s, contract={contract_time:.3f}s")
+            print(f"\\beta = {braid_to_latex(word, compact=True)}")
+            print(f"V_{{\\hat{{\\beta}}}}(t) = {jones_to_latex(jones, 't')}")
+        else:
+            print(f"\n{'='*60}")
+            print(f"Random braid #{i+1}")
+            print(f"Strands: {args.strands}, Length: {args.length}, {'Reduced' if reduced else 'General'}")
+            print(f"Components: {nc} ({'knot' if nc == 1 else 'link'})")
+            print(f"Word: {word}")
+            print(f"\nlog10(cost): {info.cost:.1f}")
+            print(f"Optimization: {opt_time:.2f}s, Contraction: {contract_time:.3f}s")
+            print(f"Jones polynomial ({len(jones)} terms):")
+            print(jones)
 
 
 if __name__ == '__main__':

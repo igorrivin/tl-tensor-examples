@@ -55,6 +55,29 @@ python random_braids.py -n 4 -l 20 --stats --count 1000
 | 5       | 1, 3, 5             |
 | n       | same parity as n    |
 
+### LaTeX Utilities
+
+`latex_utils.py` - Format braids and Jones polynomials as LaTeX.
+
+```python
+from latex_utils import braid_to_latex, jones_to_latex, jones_to_sympy
+
+# Braid word to LaTeX
+braid_to_latex([1, 1, 1])           # '\sigma_1 \sigma_1 \sigma_1'
+braid_to_latex([1, 1, 1], compact=True)  # '\sigma_1^{3}'
+
+# Jones polynomial to LaTeX (t = x^4)
+jones_to_latex([(1, -8), (-1, -4), (1, 0)], 't')  # 't^{-2} - t^{-1} + 1'
+
+# Get sympy expression for further manipulation
+poly = jones_to_sympy(jones, 't')
+```
+
+Use `--latex` flag with random_braids.py:
+```bash
+python random_braids.py -n 3 -l 20 --knot --latex
+```
+
 ## Benchmarks
 
 On an ARM64 system (GH200), T(k,k) torus knots scale as follows:
