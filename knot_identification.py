@@ -26,13 +26,46 @@ from tl_tensor import TLTensorNetwork, CotengraOptimizer
 CACHE_FILE = Path(__file__).parent / "jones_database.json"
 
 
-def compute_jones(braid: list[int], max_repeats: int = 32) -> tuple:
-    """Compute Jones polynomial for a braid closure."""
+def writhe(braid: list[int]) -> int:
+    """Compute the writhe (sum of crossing signs) of a braid."""
+    return sum(1 if g > 0 else -1 for g in braid)
+
+
+def normalize_jones(jones: list[tuple[int, int]], w: int) -> list[tuple[int, int]]:
+    """
+    Normalize Jones polynomial by writhe.
+
+    The unnormalized Jones polynomial V'(L) is related to the normalized V(L) by:
+    V(L) = (-A^3)^{-w} V'(L)  where w is the writhe and A^4 = t
+
+    In x-coordinates (where t = x^4), this is a shift by -3w in exponent.
+    """
+    shift = -3 * w
+    return [(coeff, exp + shift) for coeff, exp in jones]
+
+
+def compute_jones(braid: list[int], max_repeats: int = 32, normalize: bool = False) -> tuple:
+    """
+    Compute Jones polynomial for a braid closure.
+
+    Args:
+        braid: Braid word as list of generators
+        max_repeats: Optimization repeats for cotengra
+        normalize: If True, normalize by writhe to get standard Jones polynomial
+
+    Returns:
+        Jones polynomial as list of (coefficient, exponent) tuples
+    """
     network = TLTensorNetwork.from_word(braid)
     opt = CotengraOptimizer(max_repeats=max_repeats, methods=['greedy'])
     info = network.contract_info(optimize=opt)
     contracted = network.contract(optimize=info.path)
-    return contracted.tensors[0].terms[0][1]
+    jones = contracted.tensors[0].terms[0][1]
+
+    if normalize:
+        jones = normalize_jones(jones, writhe(braid))
+
+    return jones
 
 
 def jones_to_key(jones: list[tuple[int, int]]) -> str:

@@ -96,3 +96,31 @@ On an ARM64 system (GH200), T(k,k) torus knots scale as follows:
 | 12 | 132       | 133     | 8.6         | 1.09   | 74.819      |
 
 Note: `kahypar` is not available on ARM64, so these benchmarks use the `greedy` method only.
+
+## B_3 Experiments
+
+`b3_experiments.py` - Investigate knot types in random B_3 braids.
+
+```bash
+python b3_experiments.py -l 20 -n 1000           # Single length
+python b3_experiments.py --sweep-range 10 60 5   # Length sweep
+```
+
+Key findings:
+- **Odd length braids**: Always knots (100%)
+- **Even length braids**: ~70% knots, ~30% 3-component links
+- **Unknot is rare**: <1% even at short lengths
+- **Most knots are "unknown"**: Jones polynomials don't match knots ≤12 crossings
+- **Nearly all distinct**: At length 50+, almost every braid has a unique Jones polynomial
+
+### Knot Identification
+
+`knot_identification.py` - Match braids against known knots via Jones polynomial.
+
+```bash
+python knot_identification.py --build --max-crossings 12  # Build database
+python knot_identification.py --braid "1,1,1"             # Identify a braid
+python knot_identification.py --stats                     # Show statistics
+```
+
+**Caveat**: The Jones polynomial from tl-tensor depends on the braid presentation, not just the knot type. Different braid representatives of the same knot may give different polynomials. This affects unknot detection especially.
