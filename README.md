@@ -124,3 +124,43 @@ python knot_identification.py --stats                     # Show statistics
 ```
 
 **Caveat**: The Jones polynomial from tl-tensor depends on the braid presentation, not just the knot type. Different braid representatives of the same knot may give different polynomials. This affects unknot detection especially.
+
+### Variable Conventions
+
+tl-tensor and SnaPPy use different variables for the Jones polynomial:
+- **tl-tensor**: Uses x where t = x⁴ (so x = t^{1/4})
+- **SnaPPy**: Uses q where q = t^{1/2}
+
+The relationship is: **q = x²** or equivalently **q² = t**
+
+After conversion, tl-tensor and SnaPPy give identical results:
+```
+K4a1 (figure-8):
+  SnaPPy (q): q⁻⁴ - q⁻² + 1 - q² + q⁴
+  tl-tensor:  t² - t + 1 - 1/t + 1/t²  (same!)
+```
+
+### Alexander Polynomial (requires Sage)
+
+SnaPPy can compute Alexander polynomials when run inside Sage. Install snappy in the sage environment:
+
+```bash
+# In sage conda environment
+pip install --no-deps snappy spherogram FXrays plink snappy_manifolds low_index
+# Create cypari shim (see ~/devel/jones/Dockerfile for details)
+```
+
+Then use it to distinguish knots with the same Jones polynomial:
+```python
+import snappy
+K4a1 = snappy.Link('K4a1')
+K11n19 = snappy.Link('K11n19')
+
+# Same Jones polynomial
+print(K4a1.jones_polynomial())   # q^-4 - q^-2 + 1 - q^2 + q^4
+print(K11n19.jones_polynomial()) # q^-4 - q^-2 + 1 - q^2 + q^4
+
+# Different Alexander polynomials!
+print(K4a1.alexander_polynomial())   # t^2 - 3*t + 1
+print(K11n19.alexander_polynomial()) # t^6 - 2*t^5 + t^3 - 2*t + 1
+```
