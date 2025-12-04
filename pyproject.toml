@@ -1,0 +1,70 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tl-tensor-examples"
+version = "0.1.0"
+description = "Knot identification and Jones polynomial tools using tl-tensor"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+keywords = ["knot theory", "Jones polynomial", "tensor networks", "braid groups"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Mathematics",
+]
+
+dependencies = [
+    "tl-tensor",
+    "cotengra",
+    "sympy",
+]
+
+[project.optional-dependencies]
+# SnaPPy for additional invariants (Alexander polynomial, volume, signature)
+# Note: On Apple Silicon, install via conda: conda install -c conda-forge snappy
+snappy = ["snappy"]
+
+# Hyperparameter optimization for cotengra
+optuna = ["optuna"]
+
+# Full installation with all optional features
+full = ["snappy", "optuna"]
+
+# Development dependencies
+dev = [
+    "pytest",
+    "pytest-cov",
+    "black",
+    "ruff",
+]
+
+[project.scripts]
+knot-identify = "tl_examples.cli:identify_main"
+jones-compute = "tl_examples.cli:jones_main"
+
+[project.urls]
+Homepage = "https://github.com/igorrivin/tl-tensor-examples"
+Repository = "https://github.com/igorrivin/tl-tensor-examples"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+tl_examples = ["data/*.json"]
+
+[tool.black]
+line-length = 100
+target-version = ["py310", "py311", "py312"]
+
+[tool.ruff]
+line-length = 100
+select = ["E", "F", "W", "I", "UP"]
+ignore = ["E501"]  # line too long - handled by black

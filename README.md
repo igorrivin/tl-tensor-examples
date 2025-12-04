@@ -1,166 +1,355 @@
 # tl-tensor-examples
 
-Examples and benchmarks for [tl-tensor](https://github.com/your-username/tl-tensor), a library for computing the Jones polynomial via tensor network contraction.
+Fast knot identification and Jones polynomial computation using tensor networks.
 
-## Requirements
+This package combines [tl-tensor](https://github.com/igorrivin/tl-tensor) for tensor network computation with [SnaPPy](https://snappy.math.uic.edu/) for additional invariants, providing:
 
-- `tl-tensor` (install from the main repo with `maturin develop --release`)
-- `cotengra` for contraction path optimization
-- `optuna` for hyperparameter tuning (recommended)
-- `snappy` for knot/link manipulation (optional, for SnaPPy examples)
+- **Hybrid Jones computation**: Auto-selects the fastest method based on braid width
+- **Knot identification**: Match braids against known knots (≤12 crossings)
+- **Multiple invariants**: Jones, Alexander, signature, and hyperbolic volume
+- **Knot notation converters**: PD code, DT code, named knots to braid words
+- **Braid utilities**: Random braid generation, component counting, LaTeX formatting
+- **CLI tools**: `knot-identify` and `jones-compute` commands
 
-```bash
-pip install cotengra optuna
-conda install -c conda-forge snappy  # or pip install snappy
-```
+## Installation
 
-## Examples
-
-### Torus Knots
-
-`torus_knots.py` - Compute Jones polynomials for T(p,q) torus knots and benchmark performance.
-
-### Rational Tangles (requires SnaPPy)
-
-`rational_tangles.py` - Use SnaPPy to create rational tangle closures (2-bridge knots) and compute their Jones polynomials.
-
-### Knot Census (requires SnaPPy)
-
-`knot_census.py` - Compute Jones polynomials for knots from SnaPPy's knot tables.
-
-### Random Braids
-
-`random_braids.py` - Generate random braid words and compute their Jones polynomials.
+### Basic Installation (tl-tensor only)
 
 ```bash
-# Single random braid
-python random_braids.py -n 3 -l 30 --seed 42
-
-# Generate only knots (single component)
-python random_braids.py -n 3 -l 30 --knot
-
-# Non-reduced words (allows consecutive inverses)
-python random_braids.py -n 3 -l 30 --general
-
-# Component statistics
-python random_braids.py -n 4 -l 20 --stats --count 1000
+pip install tl-tensor cotengra sympy
+pip install -e .  # Install this package
 ```
 
-**Note on components:** The number of components in a braid closure is determined by the permutation's cycle structure. On n strands, the parity constrains which component counts are possible:
+### Full Installation with SnaPPy
+
+SnaPPy provides additional invariants (Alexander polynomial, hyperbolic volume, signature) and is faster for narrow braids (≤5 strands).
+
+#### Apple Silicon (M1/M2/M3)
+
+```bash
+# Create conda environment
+conda create -n knots python=3.11
+conda activate knots
+
+# Install SnaPPy via conda (no ARM wheel on PyPI)
+conda install -c conda-forge snappy
+
+# Install tl-tensor and this package
+pip install tl-tensor cotengra sympy
+pip install -e .
+```
+
+#### Linux ARM64 (GH200, Graviton, etc.)
+
+```bash
+# SnaPPy via conda
+conda install -c conda-forge snappy
+
+# Or build from source if needed
+pip install --no-deps snappy spherogram FXrays plink snappy_manifolds low_index
+```
+
+#### x86 (Intel/AMD)
+
+```bash
+pip install snappy  # PyPI wheel available
+pip install tl-tensor cotengra sympy
+pip install -e .
+```
+
+### Optional: Optuna for hyperparameter optimization
+
+```bash
+pip install optuna
+```
+
+## Quick Start
+
+```python
+from tl_examples import compute_jones, identify_braid, random_braid
+
+# Compute Jones polynomial
+braid = [1, 1, 1]  # Trefoil (σ₁³)
+jones = compute_jones(braid)
+print(jones)  # [(-1, -16), (1, -12), (1, -4)]
+# In t-variable: -t⁻⁴ + t⁻³ + t⁻¹
+
+# Identify a knot
+matches = identify_braid(braid)
+print(matches)  # ['K3a1']
+
+# Generate random braids
+braid = random_braid(n_strands=4, length=20, reduced=True)
+```
+
+## Knot Notation Converters
+
+Convert from various knot notations to braid words (requires SnaPPy):
+
+```python
+from tl_examples import to_braid, from_name, from_pd_code, compute_jones
+
+# From named knots (Rolfsen, Hoste-Thistlethwaite, torus)
+braid = to_braid("4_1")      # Figure-8: [1, -2, 1, -2]
+braid = to_braid("K8n3")     # HT notation
+braid = to_braid("T(3,5)")   # Torus knot T(3,5)
+
+# From PD code (Planar Diagram)
+pd_code = [(5, 2, 0, 3), (3, 0, 4, 1), (1, 4, 2, 5)]  # Trefoil
+braid = from_pd_code(pd_code)  # [-1, -1, -1]
+
+# From DT code (Dowker-Thistlethwaite)
+from tl_examples import from_dt_code
+braid = from_dt_code("DT: [(4,6,2)]")  # Trefoil
+
+# End-to-end: any notation -> Jones polynomial
+jones = compute_jones(to_braid("5_1"))
+```
+
+The universal `to_braid()` function auto-detects notation type:
+- Braid words: `[1, 1, 1]`
+- Named knots: `"3_1"`, `"K4a1"`, `"T(2,7)"`
+- PD codes: `[(a, b, c, d), ...]`
+- DT codes: `"DT: [(4,6,2)]"`
+
+## Performance Comparison: tl-tensor vs SnaPPy
+
+The key factor is **network width (strand count)**, not braid length:
+
+| Test Case | Strands | Length | tl-tensor | SnaPPy | Winner |
+|-----------|---------|--------|-----------|--------|--------|
+| Trefoil | 2 | 3 | 0.060s | 0.008s | SnaPPy (7x) |
+| Figure-8 | 3 | 4 | 0.051s | 0.002s | SnaPPy (25x) |
+| T(6,6) | 6 | 30 | 0.095s | 0.186s | **tl-tensor (2x)** |
+| T(7,7) | 7 | 42 | 0.152s | 2.30s | **tl-tensor (15x)** |
+| T(8,8) | 8 | 56 | 0.269s | 4.15s | **tl-tensor (15x)** |
+| B₃ len=1000 | 3 | 1000 | 2.4s | 1.2s | SnaPPy (2x) |
+| B₃ len=5000 | 3 | 5000 | 51s | 23s | SnaPPy (2x) |
+
+**Rule of thumb**:
+- **≤5 strands**: SnaPPy is ~2-25x faster
+- **≥6 strands**: tl-tensor is 2-15x faster
+
+The hybrid mode (`compute_jones_hybrid`) auto-selects the best method.
+
+### Note: Sage Requirement for SnaPPy Jones/Alexander
+
+SnaPPy's `jones_polynomial()` and `alexander_polynomial()` methods require **SageMath**. Without Sage:
+- The hybrid mode automatically falls back to tl-tensor (which is always available)
+- Knot notation converters (`to_braid`, `from_pd_code`, etc.) work fine
+- Other invariants (signature, hyperbolic volume) work fine
+
+### Using a Separate Sage Environment (Recommended)
+
+For HPC/ML environments where installing Sage causes conflicts, the hybrid mode can **call out to a separate Sage conda environment**:
+
+```bash
+# 1. Create a separate Sage environment (one-time setup)
+conda create -n sage sage snappy -c conda-forge
+```
+
+```python
+# 2. Use hybrid mode - it auto-detects the Sage environment
+from tl_examples import compute_jones_hybrid, set_sage_env, check_sage_env
+
+# Check if Sage environment is available
+if check_sage_env("sage"):
+    print("Sage environment ready!")
+
+# Optionally specify environment name
+set_sage_env("my-sage-env")  # or set TL_SAGE_ENV env var
+
+# Hybrid mode tries in order:
+# 1. SnaPPy in current env (if Sage available)
+# 2. SnaPPy via separate Sage environment
+# 3. tl-tensor (always available)
+result = compute_jones_hybrid([1, 1, 1])
+print(result['method'])  # 'sage-env' if using separate environment
+```
+
+This approach gives you the best of both worlds:
+- **Clean HPC environment**: No Sage dependency conflicts with PyTorch/CUDA
+- **Fast narrow braids**: SnaPPy+Sage performance when beneficial
+- **Graceful fallback**: tl-tensor handles everything if Sage unavailable
+
+## Knot Identification
+
+### Using Jones Polynomial
+
+```python
+from tl_examples import identify_braid
+
+# Trefoil
+matches = identify_braid([1, 1, 1])
+print(matches)  # ['K3a1']
+
+# Unknot (Jones = 1)
+matches = identify_braid([1, 2, -1, -2])
+print(matches)  # ['Unknot']
+```
+
+### Using Multiple Invariants
+
+When Jones polynomial has collisions, use additional invariants:
+
+```python
+from tl_examples import identify_with_invariants
+
+result = identify_with_invariants([1, -2, 1, -2])  # Figure-8
+print(result['jones_matches'])  # ['K4a1', 'K11n19'] - same Jones!
+print(result['volume'])         # 2.029... (hyperbolic volume)
+print(result['signature'])      # 0
+```
+
+The invariant cascade for disambiguation:
+```
+Jones → Alexander → Signature → Volume
+```
+
+- **Jones**: Fast (tl-tensor), catches most knots
+- **Alexander**: Resolves ~10% of Jones collisions
+- **Signature**: Works for all knots including torus knots
+- **Volume**: Resolves ~95% of remaining collisions (hyperbolic knots only)
+
+## Variable Conventions
+
+tl-tensor and SnaPPy use different variables:
+
+| System | Variable | Relationship |
+|--------|----------|--------------|
+| tl-tensor | x | t = x⁴ |
+| SnaPPy | q | q² = t |
+| Standard | t | — |
+
+Conversion: **q = x²**
+
+### Chirality Convention
+
+tl-tensor and SnaPPy use **opposite chirality** for braid generators:
+- `[1, 1, 1]` in tl-tensor = left-hand trefoil
+- `[1, 1, 1]` in SnaPPy = right-hand trefoil
+
+For achiral knots (like figure-8), both systems agree exactly.
+
+## Braid Utilities
+
+```python
+from tl_examples import random_braid, num_components, writhe, torus_braid
+from tl_examples import braid_to_latex, jones_to_latex
+
+# Random braid generation
+braid = random_braid(n_strands=4, length=30, reduced=True)
+
+# Component counting
+nc = num_components([1, -1])  # 2 (unlink, not unknot!)
+nc = num_components([1, 2, -1, -2])  # 1 (unknot)
+
+# Torus knots
+braid = torus_braid(3, 5)  # T(3,5) torus knot
+
+# LaTeX formatting
+latex = braid_to_latex([1, 1, 1], compact=True)  # '\sigma_1^{3}'
+latex = jones_to_latex(jones, 't')  # '-t^{-4} + t^{-3} + t^{-1}'
+```
+
+## Important Notes
+
+### The Unknot Trap
+
+**Warning**: `[1, -1]` is NOT the unknot! It's a 2-component unlink.
+
+```python
+num_components([1, -1])      # 2 - two separate circles!
+num_components([1, 2, -1, -2])  # 1 - true unknot
+
+# Jones polynomial
+compute_jones([1, -1])      # [(-1, -2), (-1, 2)] - NOT 1!
+compute_jones([1, 2, -1, -2])  # [(1, 0)] - equals 1 ✓
+```
+
+The unknot has Jones polynomial = 1 (i.e., `[(1, 0)]` in tl-tensor format).
+
+### Component Parity
+
+For B_n braids, the number of components in the closure has the same parity as n:
 
 | Strands | Possible components |
 |---------|---------------------|
-| 3       | 1, 3                |
-| 4       | 2, 4                |
-| 5       | 1, 3, 5             |
-| n       | same parity as n    |
+| 3 | 1, 3 |
+| 4 | 2, 4 |
+| 5 | 1, 3, 5 |
+| n | same parity as n |
 
-### LaTeX Utilities
+## Examples
 
-`latex_utils.py` - Format braids and Jones polynomials as LaTeX.
+### Torus Knots Benchmark
+
+```bash
+python examples/torus_knots.py
+```
+
+### Random Braid Experiments
+
+```bash
+# Component statistics
+python examples/random_braids.py -n 3 -l 30 --stats --count 1000
+
+# Generate only knots
+python examples/random_braids.py -n 3 -l 30 --knot
+```
+
+### B₃ Knot Distribution
+
+```bash
+python examples/b3_experiments.py --sweep-range 10 60 5 -n 1000
+```
+
+## Command Line Interface
+
+After installation, two CLI commands are available:
+
+```bash
+# Identify a knot from its braid word
+knot-identify 1 1 1
+# Output: K3a1
+
+knot-identify 1 1 1 --verbose
+# Output: Braid: [1, 1, 1]
+#         Jones polynomial: [(-1, -16), (1, -12), (1, -4)]
+#         Identified as: ['K3a1']
+
+# Use multiple invariants for disambiguation
+knot-identify 1 -2 1 -2 --invariants
+
+# Compute Jones polynomial
+jones-compute 1 1 1
+# Output: [(-1, -16), (1, -12), (1, -4)]
+
+jones-compute 1 1 1 --latex --variable t
+# Output: \frac{1}{t} + \frac{1}{t^{3}} - \frac{1}{t^{4}}
+
+# Use hybrid mode (auto-selects fastest method)
+jones-compute 1 2 3 4 5 6 1 2 3 4 5 6 --hybrid
+```
+
+## Building Databases
+
+To rebuild the knot databases:
 
 ```python
-from latex_utils import braid_to_latex, jones_to_latex, jones_to_sympy
+from tl_examples.identification import build_jones_database, save_database
 
-# Braid word to LaTeX
-braid_to_latex([1, 1, 1])           # '\sigma_1 \sigma_1 \sigma_1'
-braid_to_latex([1, 1, 1], compact=True)  # '\sigma_1^{3}'
-
-# Jones polynomial to LaTeX (t = x^4)
-jones_to_latex([(1, -8), (-1, -4), (1, 0)], 't')  # 't^{-2} - t^{-1} + 1'
-
-# Get sympy expression for further manipulation
-poly = jones_to_sympy(jones, 't')
+# Requires SnaPPy
+db = build_jones_database(max_crossings=12)
+save_database(db)
 ```
 
-Use `--latex` flag with random_braids.py:
-```bash
-python random_braids.py -n 3 -l 20 --knot --latex
-```
+## License
 
-## Benchmarks
+MIT
 
-On an ARM64 system (GH200), T(k,k) torus knots scale as follows:
+## Citation
 
-| k  | Crossings | Tensors | log10(cost) | Opt(s) | Contract(s) |
-|----|-----------|---------|-------------|--------|-------------|
-| 3  | 6         | 7       | 2.5         | 0.35   | 0.000       |
-| 4  | 12        | 13      | 3.2         | 0.15   | 0.000       |
-| 5  | 20        | 21      | 4.0         | 0.17   | 0.001       |
-| 6  | 30        | 31      | 4.6         | 0.21   | 0.004       |
-| 7  | 42        | 43      | 5.3         | 0.29   | 0.018       |
-| 8  | 56        | 57      | 6.0         | 0.37   | 0.091       |
-| 9  | 72        | 73      | 6.6         | 0.50   | 0.470       |
-| 10 | 90        | 91      | 7.3         | 0.65   | 2.696       |
-| 11 | 110       | 111     | 7.9         | 0.86   | 12.484      |
-| 12 | 132       | 133     | 8.6         | 1.09   | 74.819      |
-
-Note: `kahypar` is not available on ARM64, so these benchmarks use the `greedy` method only.
-
-## B_3 Experiments
-
-`b3_experiments.py` - Investigate knot types in random B_3 braids.
-
-```bash
-python b3_experiments.py -l 20 -n 1000           # Single length
-python b3_experiments.py --sweep-range 10 60 5   # Length sweep
-```
-
-Key findings:
-- **Odd length braids**: Always knots (100%)
-- **Even length braids**: ~70% knots, ~30% 3-component links
-- **Unknot is rare**: <1% even at short lengths
-- **Most knots are "unknown"**: Jones polynomials don't match knots ≤12 crossings
-- **Nearly all distinct**: At length 50+, almost every braid has a unique Jones polynomial
-
-### Knot Identification
-
-`knot_identification.py` - Match braids against known knots via Jones polynomial.
-
-```bash
-python knot_identification.py --build --max-crossings 12  # Build database
-python knot_identification.py --braid "1,1,1"             # Identify a braid
-python knot_identification.py --stats                     # Show statistics
-```
-
-**Caveat**: The Jones polynomial from tl-tensor depends on the braid presentation, not just the knot type. Different braid representatives of the same knot may give different polynomials. This affects unknot detection especially.
-
-### Variable Conventions
-
-tl-tensor and SnaPPy use different variables for the Jones polynomial:
-- **tl-tensor**: Uses x where t = x⁴ (so x = t^{1/4})
-- **SnaPPy**: Uses q where q = t^{1/2}
-
-The relationship is: **q = x²** or equivalently **q² = t**
-
-After conversion, tl-tensor and SnaPPy give identical results:
-```
-K4a1 (figure-8):
-  SnaPPy (q): q⁻⁴ - q⁻² + 1 - q² + q⁴
-  tl-tensor:  t² - t + 1 - 1/t + 1/t²  (same!)
-```
-
-### Alexander Polynomial (requires Sage)
-
-SnaPPy can compute Alexander polynomials when run inside Sage. Install snappy in the sage environment:
-
-```bash
-# In sage conda environment
-pip install --no-deps snappy spherogram FXrays plink snappy_manifolds low_index
-# Create cypari shim (see ~/devel/jones/Dockerfile for details)
-```
-
-Then use it to distinguish knots with the same Jones polynomial:
-```python
-import snappy
-K4a1 = snappy.Link('K4a1')
-K11n19 = snappy.Link('K11n19')
-
-# Same Jones polynomial
-print(K4a1.jones_polynomial())   # q^-4 - q^-2 + 1 - q^2 + q^4
-print(K11n19.jones_polynomial()) # q^-4 - q^-2 + 1 - q^2 + q^4
-
-# Different Alexander polynomials!
-print(K4a1.alexander_polynomial())   # t^2 - 3*t + 1
-print(K11n19.alexander_polynomial()) # t^6 - 2*t^5 + t^3 - 2*t + 1
-```
+If you use this software, please cite:
+- tl-tensor: [citation]
+- SnaPPy: Culler, Dunfield, Goerner, Weeks, et al.

@@ -1,0 +1,63 @@
+# tl-tensor-examples Docker image
+# Provides Jones polynomial computation and knot identification
+#
+# Build:
+#   docker build -t tl-tensor-examples .
+#
+# Build for multiple architectures:
+#   docker buildx build --platform linux/amd64,linux/arm64 -t tl-tensor-examples .
+#
+# Run interactive:
+#   docker run -it tl-tensor-examples python
+#
+# Run with mounted data:
+#   docker run -v $(pwd)/data:/data tl-tensor-examples python /data/my_script.py
+
+FROM python:3.11-slim
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Rust (required for tl-tensor)
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Create working directory
+WORKDIR /app
+
+# Install Python dependencies
+# Note: We install maturin first (needed to build tl-tensor from source if wheels unavailable)
+RUN pip install --no-cache-dir maturin
+
+# Install core dependencies
+RUN pip install --no-cache-dir \
+    numpy \
+    scipy \
+    sympy \
+    cotengra \
+    opt_einsum
+
+# Install tl-tensor (may build from source on ARM)
+RUN pip install --no-cache-dir tl-tensor
+
+# Install SnaPPy (works on both x86 and ARM via pip now)
+# Note: jones_polynomial() requires Sage, but converters/volume/signature work
+RUN pip install --no-cache-dir snappy || echo "SnaPPy installation failed, continuing without it"
+
+# Copy package files
+COPY pyproject.toml README.md ./
+COPY src/ ./src/
+COPY examples/ ./examples/
+
+# Install the package
+RUN pip install --no-cache-dir -e .
+
+# Verify installation
+RUN python -c "from tl_examples import compute_jones; print('tl-tensor-examples installed successfully')"
+
+# Default command
+CMD ["python"]
