@@ -28,6 +28,33 @@ conda install -c conda-forge snappy  # or pip install snappy
 
 `knot_census.py` - Compute Jones polynomials for knots from SnaPPy's knot tables.
 
+### Random Braids
+
+`random_braids.py` - Generate random braid words and compute their Jones polynomials.
+
+```bash
+# Single random braid
+python random_braids.py -n 3 -l 30 --seed 42
+
+# Generate only knots (single component)
+python random_braids.py -n 3 -l 30 --knot
+
+# Non-reduced words (allows consecutive inverses)
+python random_braids.py -n 3 -l 30 --general
+
+# Component statistics
+python random_braids.py -n 4 -l 20 --stats --count 1000
+```
+
+**Note on components:** The number of components in a braid closure is determined by the permutation's cycle structure. On n strands, the parity constrains which component counts are possible:
+
+| Strands | Possible components |
+|---------|---------------------|
+| 3       | 1, 3                |
+| 4       | 2, 4                |
+| 5       | 1, 3, 5             |
+| n       | same parity as n    |
+
 ## Benchmarks
 
 On an ARM64 system (GH200), T(k,k) torus knots scale as follows:
