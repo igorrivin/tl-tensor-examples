@@ -378,6 +378,7 @@ def jones_to_q_variable(jones: list[tuple[int, int]]) -> list[tuple[int, int]]:
 def compute_jones_fast(
     braid: list[int],
     crossing_threshold: Optional[int] = None,
+    simplify: bool = True,
 ) -> dict:
     """
     Compute Jones polynomial using the fastest available method.
@@ -398,13 +399,18 @@ def compute_jones_fast(
     Args:
         braid: Braid word as list of generators (e.g., [1, 1, 1] for trefoil)
         crossing_threshold: Override automatic threshold (default: 16 with Numba, 12 without)
+        simplify: If True, simplify diagram before computation (default: True).
+            This can significantly reduce crossings for messy diagrams,
+            making state sum viable for more cases.
 
     Returns:
         dict with:
         - 'jones': Jones polynomial as [(coeff, exp), ...] in x-variable (t = x^4)
         - 'method': 'numba-statesum', 'statesum', or 'tl-tensor'
-        - 'crossings': Number of crossings in the diagram
+        - 'crossings': Number of crossings in the diagram (after simplification)
+        - 'crossings_original': Original crossing count before simplification
         - 'strands': Number of strands in the braid
+        - 'simplified': Whether simplification was applied
 
     Example:
         >>> result = compute_jones_fast([1, 1, 1])  # Trefoil - uses state sum
@@ -416,6 +422,11 @@ def compute_jones_fast(
         >>> result = compute_jones_fast(torus_braid(10, 10))  # 90 crossings
         >>> result['method']
         'tl-tensor'  # State sum would be exponential, tensor is fast
+
+        >>> # Messy diagram that simplifies well
+        >>> result = compute_jones_fast(messy_braid, simplify=True)
+        >>> result['crossings_original'], result['crossings']
+        (45, 12)  # Simplified from 45 to 12 crossings
     """
     from .kauffman import (
         jones_from_pd_code_numba,
@@ -428,16 +439,26 @@ def compute_jones_fast(
         crossing_threshold = STATESUM_CROSSING_THRESHOLD
 
     n_strands = max(abs(g) for g in braid) + 1
+    simplified = False
+    n_crossings_original = len(braid)
 
     # Get PD code and crossing count via snappy
     if HAS_SNAPPY:
         K = snappy.Link(braid_closure=braid)
+        n_crossings_original = len(K.PD_code())
+
+        # Simplify diagram if requested
+        if simplify:
+            K.simplify('global')
+            simplified = True
+
         pd_code = K.PD_code()
         writhe_val = K.writhe()
         n_crossings = len(pd_code)
     else:
         # Without snappy, we can't get PD code, so always use tl-tensor
         n_crossings = float('inf')
+        n_crossings_original = len(braid)
         pd_code = None
         writhe_val = None
 
@@ -452,17 +473,25 @@ def compute_jones_fast(
     else:
         # Use tl-tensor with minimal path optimization (max_repeats=1)
         # This avoids the ~70ms cotengra overhead while still being fast
-        network = TLTensorNetwork.from_word(braid)
+        # Note: we use the simplified braid from snappy if available
+        if HAS_SNAPPY and simplified:
+            # Get braid from simplified diagram
+            simplified_braid = K.braid_word()
+            network = TLTensorNetwork.from_word(simplified_braid)
+        else:
+            network = TLTensorNetwork.from_word(braid)
+
         opt = CotengraOptimizer(max_repeats=1, methods=['greedy'], progbar=False)
         info = network.contract_info(optimize=opt)
         contracted = network.contract(optimize=info.path)
         jones = contracted.tensors[0].terms[0][1]
         method = 'tl-tensor'
-        n_crossings = len(braid)  # For braid, crossings = length
 
     return {
         'jones': jones,
         'method': method,
         'crossings': n_crossings,
+        'crossings_original': n_crossings_original,
         'strands': n_strands,
+        'simplified': simplified,
     }
