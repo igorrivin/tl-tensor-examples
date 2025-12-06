@@ -373,3 +373,96 @@ def jones_to_q_variable(jones: list[tuple[int, int]]) -> list[tuple[int, int]]:
             raise ValueError(f"Exponent {x_exp} not divisible by 2")
         result.append((coeff, x_exp // 2))
     return result
+
+
+def compute_jones_fast(
+    braid: list[int],
+    crossing_threshold: Optional[int] = None,
+) -> dict:
+    """
+    Compute Jones polynomial using the fastest available method.
+
+    This is the recommended function for optimal performance. It automatically
+    selects between:
+    - Numba-optimized Kauffman bracket state sum (for small diagrams)
+    - tl-tensor network contraction (for larger/wider braids)
+
+    The crossover point is ~16 crossings with Numba, ~12 without.
+
+    Performance characteristics:
+    - Small diagrams (≤16 crossings): Numba state sum ~0.3-7ms
+    - Large/wide braids: tl-tensor ~2-20ms (polynomial in width)
+    - tl-tensor scales with braid width, not crossing count
+    - State sum is exponential in crossings but has low overhead
+
+    Args:
+        braid: Braid word as list of generators (e.g., [1, 1, 1] for trefoil)
+        crossing_threshold: Override automatic threshold (default: 16 with Numba, 12 without)
+
+    Returns:
+        dict with:
+        - 'jones': Jones polynomial as [(coeff, exp), ...] in x-variable (t = x^4)
+        - 'method': 'numba-statesum', 'statesum', or 'tl-tensor'
+        - 'crossings': Number of crossings in the diagram
+        - 'strands': Number of strands in the braid
+
+    Example:
+        >>> result = compute_jones_fast([1, 1, 1])  # Trefoil - uses state sum
+        >>> result['jones']
+        [(-1, -16), (1, -12), (1, -4)]
+        >>> result['method']
+        'numba-statesum'
+
+        >>> result = compute_jones_fast(torus_braid(10, 10))  # 90 crossings
+        >>> result['method']
+        'tl-tensor'  # State sum would be exponential, tensor is fast
+    """
+    from .kauffman import (
+        jones_from_pd_code_numba,
+        jones_from_pd_code,
+        STATESUM_CROSSING_THRESHOLD,
+        _HAS_NUMBA,
+    )
+
+    if crossing_threshold is None:
+        crossing_threshold = STATESUM_CROSSING_THRESHOLD
+
+    n_strands = max(abs(g) for g in braid) + 1
+
+    # Get PD code and crossing count via snappy
+    if HAS_SNAPPY:
+        K = snappy.Link(braid_closure=braid)
+        pd_code = K.PD_code()
+        writhe_val = K.writhe()
+        n_crossings = len(pd_code)
+    else:
+        # Without snappy, we can't get PD code, so always use tl-tensor
+        n_crossings = float('inf')
+        pd_code = None
+        writhe_val = None
+
+    # Decision: state sum for small diagrams, tl-tensor for large/wide
+    if n_crossings <= crossing_threshold and pd_code is not None:
+        if _HAS_NUMBA:
+            jones = jones_from_pd_code_numba(pd_code, writhe_val)
+            method = 'numba-statesum'
+        else:
+            jones = jones_from_pd_code(pd_code, writhe_val)
+            method = 'statesum'
+    else:
+        # Use tl-tensor with minimal path optimization (max_repeats=1)
+        # This avoids the ~70ms cotengra overhead while still being fast
+        network = TLTensorNetwork.from_word(braid)
+        opt = CotengraOptimizer(max_repeats=1, methods=['greedy'], progbar=False)
+        info = network.contract_info(optimize=opt)
+        contracted = network.contract(optimize=info.path)
+        jones = contracted.tensors[0].terms[0][1]
+        method = 'tl-tensor'
+        n_crossings = len(braid)  # For braid, crossings = length
+
+    return {
+        'jones': jones,
+        'method': method,
+        'crossings': n_crossings,
+        'strands': n_strands,
+    }

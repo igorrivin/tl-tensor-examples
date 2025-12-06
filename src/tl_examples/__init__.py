@@ -36,11 +36,22 @@ __version__ = "0.1.0"
 
 from .jones import (
     compute_jones,
+    compute_jones_fast,
     compute_jones_hybrid,
     compute_jones_sage_env,
     check_sage_env,
     set_sage_env,
     has_kahypar,
+)
+from .kauffman import (
+    compute_jones_from_pd,
+    compute_jones_from_pd_fast,
+    compute_jones_auto,
+    kauffman_bracket_from_pd,
+    kauffman_bracket_numba,
+    jones_from_pd_code_numba,
+    has_numba,
+    STATESUM_CROSSING_THRESHOLD,
 )
 from .braids import random_braid, num_components, writhe, torus_braid, n_strands
 from .identification import identify_braid, identify_with_invariants
@@ -71,13 +82,23 @@ except ImportError:
     )
 
 __all__ = [
-    # Jones computation
+    # Jones computation (braid-based via tl-tensor)
     "compute_jones",
+    "compute_jones_fast",
     "compute_jones_hybrid",
     "compute_jones_sage_env",
     "check_sage_env",
     "set_sage_env",
     "has_kahypar",
+    # Jones computation (PD code-based via state sum)
+    "compute_jones_from_pd",
+    "compute_jones_from_pd_fast",
+    "compute_jones_auto",
+    "kauffman_bracket_from_pd",
+    "kauffman_bracket_numba",
+    "jones_from_pd_code_numba",
+    "has_numba",
+    "STATESUM_CROSSING_THRESHOLD",
     # Braid utilities
     "random_braid",
     "num_components",
