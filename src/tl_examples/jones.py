@@ -5,7 +5,7 @@ Jones polynomial computation via tl-tensor and hybrid methods.
 import json
 import os
 import subprocess
-from typing import Optional
+from typing import Literal, Optional
 import warnings
 
 warnings.filterwarnings("ignore")
@@ -21,9 +21,25 @@ try:
 except ImportError:
     HAS_SNAPPY = False
 
+# KaHyPar is optional (alternative optimizer for tensor contraction)
+try:
+    import kahypar
+
+    HAS_KAHYPAR = True
+except ImportError:
+    HAS_KAHYPAR = False
+
 
 # Crossover point: use SnaPPy for braids with <= this many strands
 DEFAULT_STRAND_THRESHOLD = 5
+
+# Valid optimizer choices
+OptimizerType = Literal["greedy", "kahypar", "auto"]
+
+
+def has_kahypar() -> bool:
+    """Check if kahypar optimizer is available."""
+    return HAS_KAHYPAR
 
 # Sage environment configuration
 # Can be set via environment variable or programmatically
@@ -38,6 +54,7 @@ def compute_jones(
     braid: list[int],
     max_repeats: int = 32,
     methods: list[str] = None,
+    optimizer: OptimizerType = "greedy",
 ) -> list[tuple[int, int]]:
     """
     Compute Jones polynomial using tl-tensor.
@@ -45,7 +62,11 @@ def compute_jones(
     Args:
         braid: Braid word as list of generators (e.g., [1, 1, 1] for trefoil)
         max_repeats: Number of optimization repeats for cotengra
-        methods: Optimization methods (default: ['greedy'])
+        methods: Optimization methods (deprecated, use optimizer instead)
+        optimizer: Optimization strategy:
+            - "greedy": Fast greedy algorithm (default, recommended for most cases)
+            - "kahypar": Hypergraph partitioning (requires kahypar package)
+            - "auto": Try kahypar if available, fall back to greedy
 
     Returns:
         Jones polynomial as list of (coefficient, exponent) tuples in x-variable
@@ -55,12 +76,26 @@ def compute_jones(
         >>> compute_jones([1, 1, 1])  # Trefoil
         [(-1, -16), (1, -12), (1, -4)]
         # This is -x^{-16} + x^{-12} + x^{-4} = -t^{-4} + t^{-3} + t^{-1}
+
+        >>> compute_jones([1, 1, 1], optimizer="kahypar")  # Use kahypar
     """
-    if methods is None:
-        methods = ["greedy"]
+    # Handle methods parameter for backwards compatibility
+    if methods is not None:
+        opt_methods = methods
+    elif optimizer == "kahypar":
+        if not HAS_KAHYPAR:
+            raise ImportError(
+                "kahypar optimizer requested but kahypar is not installed. "
+                "Install from source: https://github.com/kahypar/kahypar"
+            )
+        opt_methods = ["kahypar"]
+    elif optimizer == "auto":
+        opt_methods = ["kahypar"] if HAS_KAHYPAR else ["greedy"]
+    else:
+        opt_methods = ["greedy"]
 
     network = TLTensorNetwork.from_word(braid)
-    opt = CotengraOptimizer(max_repeats=max_repeats, methods=methods)
+    opt = CotengraOptimizer(max_repeats=max_repeats, methods=opt_methods)
     info = network.contract_info(optimize=opt)
     contracted = network.contract(optimize=info.path)
     return contracted.tensors[0].terms[0][1]
@@ -215,6 +250,7 @@ def compute_jones_hybrid(
     use_sage_env: bool = True,
     sage_env_name: Optional[str] = None,
     max_repeats: int = 32,
+    optimizer: OptimizerType = "greedy",
 ) -> dict:
     """
     Compute Jones polynomial using the optimal method.
@@ -235,12 +271,17 @@ def compute_jones_hybrid(
         use_sage_env: If True, try calling a separate Sage environment
         sage_env_name: Conda env name for Sage (default: TL_SAGE_ENV or "sage")
         max_repeats: Cotengra optimization repeats (for tl-tensor)
+        optimizer: Optimization strategy for tl-tensor:
+            - "greedy": Fast greedy algorithm (default, recommended for most cases)
+            - "kahypar": Hypergraph partitioning (requires kahypar package)
+            - "auto": Try kahypar if available, fall back to greedy
 
     Returns:
         dict with:
         - 'result': Jones polynomial in x-variable [(coeff, exp), ...]
         - 'method': 'tl-tensor', 'snappy', or 'sage-env'
         - 'n_strands': Number of strands in braid
+        - 'optimizer': Optimizer used (if method is 'tl-tensor')
 
     Example:
         >>> result = compute_jones_hybrid([1, 1, 1])
@@ -273,8 +314,19 @@ def compute_jones_hybrid(
                 return {"result": result, "method": "sage-env", "n_strands": n_strands}
 
     # Option 3: Use tl-tensor (always available, optimal for wide braids)
-    result = compute_jones(braid, max_repeats=max_repeats)
-    return {"result": result, "method": "tl-tensor", "n_strands": n_strands}
+    # Determine actual optimizer used
+    if optimizer == "auto":
+        actual_optimizer = "kahypar" if HAS_KAHYPAR else "greedy"
+    else:
+        actual_optimizer = optimizer
+
+    result = compute_jones(braid, max_repeats=max_repeats, optimizer=optimizer)
+    return {
+        "result": result,
+        "method": "tl-tensor",
+        "n_strands": n_strands,
+        "optimizer": actual_optimizer,
+    }
 
 
 def jones_to_t_variable(jones: list[tuple[int, int]]) -> list[tuple[int, int]]:

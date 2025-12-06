@@ -40,6 +40,7 @@ from .jones import (
     compute_jones_sage_env,
     check_sage_env,
     set_sage_env,
+    has_kahypar,
 )
 from .braids import random_braid, num_components, writhe, torus_braid, n_strands
 from .identification import identify_braid, identify_with_invariants
@@ -76,6 +77,7 @@ __all__ = [
     "compute_jones_sage_env",
     "check_sage_env",
     "set_sage_env",
+    "has_kahypar",
     # Braid utilities
     "random_braid",
     "num_components",

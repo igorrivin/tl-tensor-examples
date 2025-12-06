@@ -57,6 +57,48 @@ pip install tl-tensor cotengra sympy
 pip install -e .
 ```
 
+### Recommended: Topology Environment (Best Performance)
+
+For optimal performance with both narrow and wide braids, create a unified "topology" environment that combines Sage+SnaPPy with tl-tensor:
+
+```bash
+# 1. Create base Sage environment
+conda create -n sage sage snappy -c conda-forge
+
+# 2. Clone to topology environment and add tl-tensor
+conda create -n topology --clone sage
+conda activate topology
+
+# 3. Install tl-tensor (requires maturin and Rust)
+pip install maturin cotengra sympy opt_einsum
+cd /path/to/tl-tensor
+maturin develop --release
+
+# 4. Install tl-tensor-examples
+pip install -e /path/to/tl-tensor-examples
+```
+
+This setup gives you:
+- **Direct SnaPPy+Sage access**: No subprocess overhead for narrow braids
+- **Full tl-tensor performance**: Tensor network computation for wide braids
+- **Hybrid mode**: Automatically selects the fastest method
+
+### Optional: KaHyPar Optimizer
+
+[KaHyPar](https://github.com/kahypar/kahypar) provides an alternative hypergraph partitioning optimizer for tensor contraction. While greedy is typically faster for TL-algebra tensor networks, kahypar may be beneficial for other tensor network structures.
+
+```bash
+# Build from source (required for ARM64)
+git clone --recursive https://github.com/kahypar/kahypar.git
+cd kahypar
+mkdir build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release -DKAHYPAR_PYTHON_INTERFACE=ON
+make -j$(nproc)
+
+# Copy the built module to your environment
+cp python/kahypar*.so $(python -c "import site; print(site.getsitepackages()[0])")/
+```
+
 ### Optional: Optuna for hyperparameter optimization
 
 ```bash
@@ -66,13 +108,18 @@ pip install optuna
 ## Quick Start
 
 ```python
-from tl_examples import compute_jones, identify_braid, random_braid
+from tl_examples import compute_jones, identify_braid, random_braid, has_kahypar
 
 # Compute Jones polynomial
 braid = [1, 1, 1]  # Trefoil (σ₁³)
 jones = compute_jones(braid)
 print(jones)  # [(-1, -16), (1, -12), (1, -4)]
 # In t-variable: -t⁻⁴ + t⁻³ + t⁻¹
+
+# Use different optimizers for tensor contraction
+jones = compute_jones(braid, optimizer="greedy")  # Default, fastest for most cases
+if has_kahypar():
+    jones = compute_jones(braid, optimizer="kahypar")  # Hypergraph partitioning
 
 # Identify a knot
 matches = identify_braid(braid)
@@ -330,6 +377,11 @@ jones-compute 1 1 1 --latex --variable t
 
 # Use hybrid mode (auto-selects fastest method)
 jones-compute 1 2 3 4 5 6 1 2 3 4 5 6 --hybrid
+
+# Choose optimizer for tensor contraction
+jones-compute 1 1 1 --optimizer greedy   # Default, fastest for TL-algebra
+jones-compute 1 1 1 --optimizer kahypar  # Hypergraph partitioning (if installed)
+jones-compute 1 1 1 --optimizer auto     # Try kahypar, fall back to greedy
 ```
 
 ## Building Databases

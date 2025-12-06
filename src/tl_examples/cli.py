@@ -90,20 +90,37 @@ def jones_main():
         action="store_true",
         help="Use hybrid mode (auto-select fastest method)",
     )
+    parser.add_argument(
+        "--optimizer",
+        "-O",
+        choices=["greedy", "kahypar", "auto"],
+        default="greedy",
+        help="Optimizer for tensor contraction (default: greedy)",
+    )
 
     args = parser.parse_args()
 
-    from .jones import compute_jones, compute_jones_hybrid
+    from .jones import compute_jones, compute_jones_hybrid, has_kahypar
     from .latex import jones_to_latex
 
     braid = args.braid
 
+    if args.optimizer == "kahypar" and not has_kahypar():
+        print(
+            "Warning: kahypar not available, falling back to greedy optimizer",
+            file=sys.stderr,
+        )
+        args.optimizer = "greedy"
+
     if args.hybrid:
-        result = compute_jones_hybrid(braid)
-        print(f"Method: {result['method']} ({result['n_strands']} strands)")
+        result = compute_jones_hybrid(braid, optimizer=args.optimizer)
+        method_info = result['method']
+        if result['method'] == 'tl-tensor':
+            method_info += f" ({result.get('optimizer', 'greedy')})"
+        print(f"Method: {method_info} ({result['n_strands']} strands)")
         print(f"Result: {result['result']}")
     else:
-        jones = compute_jones(braid)
+        jones = compute_jones(braid, optimizer=args.optimizer)
 
         if args.latex:
             output = jones_to_latex(jones, variable=args.variable)
